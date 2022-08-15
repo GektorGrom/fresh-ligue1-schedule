@@ -32,14 +32,17 @@ interface Match {
 }
 
 export const handler: Handlers<Match> = {
-  async GET(_, ctx) {
+  async GET(req, ctx) {
+    const headers = {};
+    for (const [key, value] of req.headers.entries()) {
+      headers[key] = value;
+    }
     const { day } = ctx.params;
     const startOfDay = formatter.parse(day);
     const endOfDay = addDays(startOfDay, 1);
     const { Items } = await client.send(
       new ScanCommand({
         TableName: "BeIN_schedule",
-        // IndexName: "start-game-index",
         FilterExpression: "#s BETWEEN :dayStart AND :dayEnd",
         ExpressionAttributeNames: {
           "#s": "start",
@@ -58,6 +61,7 @@ export const handler: Handlers<Match> = {
       date: new Date().toString(),
       startOfDay: startOfDay.toString(),
       matches: Items.map(unmarshall),
+      headers,
     });
   },
 };
@@ -69,6 +73,13 @@ export default function Greet(props: PageProps) {
       <i>Start of the day {props.data.startOfDay}</i>
       <pre>
         {JSON.stringify(props.data, null, 2)}
+      </pre>
+
+      <h2>Headers on deno deploy:</h2>
+      <pre>
+        <code>
+          {JSON.stringify(props.data.headers, null, 2)}
+        </code>
       </pre>
     </div>
   );
