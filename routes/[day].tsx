@@ -3,6 +3,7 @@ import { h } from "preact";
 import { Handlers, PageProps } from "$fresh/server.ts";
 import {
   DynamoDBClient,
+  QueryCommand,
   ScanCommand,
 } from "https://esm.sh/@aws-sdk/client-dynamodb";
 import { unmarshall } from "https://esm.sh/@aws-sdk/util-dynamodb";
@@ -31,6 +32,17 @@ interface Match {
   "title": string;
 }
 
+const QueryInput = {
+  TableName: "BeIN_schedule",
+  IndexName: "utcDay-start-index",
+  KeyConditionExpression: "utcDay = :specificDay",
+  ProjectionExpression:
+    "#startTime, id, away, chanel, home, isLigueShow, isLive, title",
+  ExpressionAttributeNames: {
+    "#startTime": "start",
+  },
+};
+
 export const handler: Handlers<Match> = {
   async GET(req, ctx) {
     const headers = {};
@@ -39,47 +51,62 @@ export const handler: Handlers<Match> = {
     }
     const { day } = ctx.params;
     const startOfDay = formatter.parse(day);
-    const endOfDay = addDays(startOfDay, 1);
-    const { Items } = await client.send(
-      new ScanCommand({
-        TableName: "BeIN_schedule",
-        FilterExpression: "#s BETWEEN :dayStart AND :dayEnd",
-        ExpressionAttributeNames: {
-          "#s": "start",
+    const nextDay = addDays(startOfDay, 1);
+    const todayExpression = {
+      ExpressionAttributeValues: {
+        ":specificDay": {
+          S: day,
         },
-        ExpressionAttributeValues: {
-          ":dayStart": {
-            N: startOfDay.getTime().toString(),
-          },
-          ":dayEnd": {
-            N: endOfDay.getTime().toString(),
-          },
+      },
+    };
+    const tomorrowExpression = {
+      ExpressionAttributeValues: {
+        ":specificDay": {
+          S: formatter.format(nextDay),
         },
-      }),
-    );
+      },
+    };
+    const [todayMatches, tomorrowMatches] = await Promise.all([
+      client.send(
+        new QueryCommand({
+          ...QueryInput,
+          ...todayExpression,
+        }),
+      ).then(({ Items }) => Items.map(unmarshall)),
+      client.send(
+        new QueryCommand({
+          ...QueryInput,
+          ...tomorrowExpression,
+        }),
+      ).then(({ Items }) => Items.map(unmarshall)),
+    ]);
     return ctx.render({
       date: new Date().toString(),
-      startOfDay: startOfDay.toString(),
-      matches: Items.map(unmarshall),
+      matches: todayMatches.concat(tomorrowMatches),
       headers,
     });
   },
 };
 
 export default function Greet(props: PageProps) {
+  const { day } = props.params;
+  const startOfDay = formatter.parse(day);
+  const endOfDay = addDays(startOfDay, 1);
+  const startTime = startOfDay.getTime();
+  const endTime = endOfDay.getTime();
+  const matches = props.data.matches.filter(({ start }) =>
+    start >= startTime && start < endTime
+  ).map((match) => {
+    return {
+      ...match,
+      prettyStart: new Date(match.start).toString(),
+    };
+  });
   return (
     <div>
       <h1>rendered at {props.data.date}</h1>
-      <i>Start of the day {props.data.startOfDay}</i>
       <pre>
-        {JSON.stringify(props.data, null, 2)}
-      </pre>
-
-      <h2>Headers on deno deploy:</h2>
-      <pre>
-        <code>
-          {JSON.stringify(props.data.headers, null, 2)}
-        </code>
+        {JSON.stringify(matches, null, 2)}
       </pre>
     </div>
   );
