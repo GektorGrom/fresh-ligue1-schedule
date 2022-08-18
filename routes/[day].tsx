@@ -4,11 +4,11 @@ import { Handlers, PageProps } from "$fresh/server.ts";
 import {
   DynamoDBClient,
   QueryCommand,
-  ScanCommand,
 } from "https://esm.sh/@aws-sdk/client-dynamodb";
 import { unmarshall } from "https://esm.sh/@aws-sdk/util-dynamodb";
 import { DateTimeFormatter } from "https://deno.land/std@0.152.0/datetime/formatter.ts";
 import addDays from "https://deno.land/x/date_fns@v2.22.1/addDays/index.ts";
+import Matches from "../islands/Matches.tsx";
 
 const client = new DynamoDBClient({
   region: Deno.env.get("AWS_REGION"),
@@ -90,24 +90,10 @@ export const handler: Handlers<Match> = {
 
 export default function Greet(props: PageProps) {
   const { day } = props.params;
-  const startOfDay = formatter.parse(day);
-  const endOfDay = addDays(startOfDay, 1);
-  const startTime = startOfDay.getTime();
-  const endTime = endOfDay.getTime();
-  const matches = props.data.matches.filter(({ start }) =>
-    start >= startTime && start < endTime
-  ).map((match) => {
-    return {
-      ...match,
-      prettyStart: new Date(match.start).toString(),
-    };
-  });
   return (
     <div>
       <h1>rendered at {props.data.date}</h1>
-      <pre>
-        {JSON.stringify(matches, null, 2)}
-      </pre>
+      <Matches matches={props.data.matches} day={day} />
     </div>
   );
 }
